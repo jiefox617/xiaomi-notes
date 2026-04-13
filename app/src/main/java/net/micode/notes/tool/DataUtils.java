@@ -9,7 +9,7 @@
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied.
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
@@ -36,54 +36,49 @@ import java.util.HashSet;
 
 /**
  * 数据工具类
+ *
+ * 【类功能】
  * 提供笔记/文件夹的批量操作、查询、验证、格式处理等通用静态方法
- * 整个应用的数据操作公共工具层
+ *
+ * 【类间关系】
+ * - 被NotesListActivity调用：批量删除/移动笔记
+ * - 被NoteEditActivity调用：获取笔记摘要
+ * - 被WorkingNote调用：验证笔记存在性
  */
 public class DataUtils {
     public static final String TAG = "DataUtils";
 
     /**
-     * 批量删除笔记（支持多选删除）
-     * 禁止删除系统根文件夹
+     * 批量删除笔记
      */
     public static boolean batchDeleteNotes(ContentResolver resolver, HashSet<Long> ids) {
-        if (ids == null) {
-            Log.d(TAG, "the ids is null");
-            return true;
-        }
-        if (ids.size() == 0) {
-            Log.d(TAG, "no id is in the hashset");
+        if (ids == null || ids.size() == 0) {
+            Log.d(TAG, "ids is null or empty");
             return true;
         }
 
-        ArrayList<ContentProviderOperation> operationList = new ArrayList<ContentProviderOperation>();
+        ArrayList<ContentProviderOperation> operationList = new ArrayList<>();
         for (long id : ids) {
-            // 系统保护：禁止删除根目录
-            if(id == Notes.ID_ROOT_FOLDER) {
+            if (id == Notes.ID_ROOT_FOLDER) {
                 Log.e(TAG, "Don't delete system folder root");
                 continue;
             }
-            ContentProviderOperation.Builder builder = ContentProviderOperation
-                    .newDelete(ContentUris.withAppendedId(Notes.CONTENT_NOTE_URI, id));
-            operationList.add(builder.build());
+            operationList.add(ContentProviderOperation
+                    .newDelete(ContentUris.withAppendedId(Notes.CONTENT_NOTE_URI, id))
+                    .build());
         }
+
         try {
             ContentProviderResult[] results = resolver.applyBatch(Notes.AUTHORITY, operationList);
-            if (results == null || results.length == 0 || results[0] == null) {
-                Log.d(TAG, "delete notes failed, ids:" + ids.toString());
-                return false;
-            }
-            return true;
-        } catch (RemoteException e) {
-            Log.e(TAG, String.format("%s: %s", e.toString(), e.getMessage()));
-        } catch (OperationApplicationException e) {
-            Log.e(TAG, String.format("%s: %s", e.toString(), e.getMessage()));
+            return results != null && results.length > 0 && results[0] != null;
+        } catch (RemoteException | OperationApplicationException e) {
+            Log.e(TAG, e.toString());
         }
         return false;
     }
 
     /**
-     * 移动单条笔记到目标文件夹
+     * 移动单条笔记
      */
     public static void moveNoteToFoler(ContentResolver resolver, long id, long srcFolderId, long desFolderId) {
         ContentValues values = new ContentValues();
@@ -94,60 +89,48 @@ public class DataUtils {
     }
 
     /**
-     * 批量移动笔记到指定文件夹
+     * 批量移动笔记
      */
-    public static boolean batchMoveToFolder(ContentResolver resolver, HashSet<Long> ids,
-                                            long folderId) {
-        if (ids == null) {
-            Log.d(TAG, "the ids is null");
+    public static boolean batchMoveToFolder(ContentResolver resolver, HashSet<Long> ids, long folderId) {
+        if (ids == null || ids.size() == 0) {
+            Log.d(TAG, "ids is null or empty");
             return true;
         }
 
-        ArrayList<ContentProviderOperation> operationList = new ArrayList<ContentProviderOperation>();
+        ArrayList<ContentProviderOperation> operationList = new ArrayList<>();
         for (long id : ids) {
-            ContentProviderOperation.Builder builder = ContentProviderOperation
-                    .newUpdate(ContentUris.withAppendedId(Notes.CONTENT_NOTE_URI, id));
-            builder.withValue(NoteColumns.PARENT_ID, folderId);
-            builder.withValue(NoteColumns.LOCAL_MODIFIED, 1);
-            operationList.add(builder.build());
+            operationList.add(ContentProviderOperation
+                    .newUpdate(ContentUris.withAppendedId(Notes.CONTENT_NOTE_URI, id))
+                    .withValue(NoteColumns.PARENT_ID, folderId)
+                    .withValue(NoteColumns.LOCAL_MODIFIED, 1)
+                    .build());
         }
 
         try {
             ContentProviderResult[] results = resolver.applyBatch(Notes.AUTHORITY, operationList);
-            if (results == null || results.length == 0 || results[0] == null) {
-                Log.d(TAG, "delete notes failed, ids:" + ids.toString());
-                return false;
-            }
-            return true;
-        } catch (RemoteException e) {
-            Log.e(TAG, String.format("%s: %s", e.toString(), e.getMessage()));
-        } catch (OperationApplicationException e) {
-            Log.e(TAG, String.format("%s: %s", e.toString(), e.getMessage()));
+            return results != null && results.length > 0 && results[0] != null;
+        } catch (RemoteException | OperationApplicationException e) {
+            Log.e(TAG, e.toString());
         }
         return false;
     }
 
     /**
-     * 获取用户创建的文件夹数量（不含系统文件夹/垃圾箱）
+     * 获取用户创建的文件夹数量
      */
     public static int getUserFolderCount(ContentResolver resolver) {
-        Cursor cursor =resolver.query(Notes.CONTENT_NOTE_URI,
+        Cursor cursor = resolver.query(Notes.CONTENT_NOTE_URI,
                 new String[] { "COUNT(*)" },
                 NoteColumns.TYPE + "=? AND " + NoteColumns.PARENT_ID + "<>?",
-                new String[] { String.valueOf(Notes.TYPE_FOLDER), String.valueOf(Notes.ID_TRASH_FOLER)},
+                new String[] { String.valueOf(Notes.TYPE_FOLDER), String.valueOf(Notes.ID_TRASH_FOLER) },
                 null);
 
         int count = 0;
-        if(cursor != null) {
-            if(cursor.moveToFirst()) {
-                try {
-                    count = cursor.getInt(0);
-                } catch (IndexOutOfBoundsException e) {
-                    Log.e(TAG, "get folder count failed:" + e.toString());
-                } finally {
-                    cursor.close();
-                }
+        if (cursor != null) {
+            if (cursor.moveToFirst()) {
+                count = cursor.getInt(0);
             }
+            cursor.close();
         }
         return count;
     }
@@ -159,14 +142,12 @@ public class DataUtils {
         Cursor cursor = resolver.query(ContentUris.withAppendedId(Notes.CONTENT_NOTE_URI, noteId),
                 null,
                 NoteColumns.TYPE + "=? AND " + NoteColumns.PARENT_ID + "<>" + Notes.ID_TRASH_FOLER,
-                new String [] {String.valueOf(type)},
+                new String[] { String.valueOf(type) },
                 null);
 
         boolean exist = false;
         if (cursor != null) {
-            if (cursor.getCount() > 0) {
-                exist = true;
-            }
+            exist = cursor.getCount() > 0;
             cursor.close();
         }
         return exist;
@@ -181,16 +162,14 @@ public class DataUtils {
 
         boolean exist = false;
         if (cursor != null) {
-            if (cursor.getCount() > 0) {
-                exist = true;
-            }
+            exist = cursor.getCount() > 0;
             cursor.close();
         }
         return exist;
     }
 
     /**
-     * 判断数据记录是否存在于 data 表
+     * 判断数据记录是否存在
      */
     public static boolean existInDataDatabase(ContentResolver resolver, long dataId) {
         Cursor cursor = resolver.query(ContentUris.withAppendedId(Notes.CONTENT_DATA_URI, dataId),
@@ -198,16 +177,14 @@ public class DataUtils {
 
         boolean exist = false;
         if (cursor != null) {
-            if (cursor.getCount() > 0) {
-                exist = true;
-            }
+            exist = cursor.getCount() > 0;
             cursor.close();
         }
         return exist;
     }
 
     /**
-     * 检查文件夹名称是否已存在（非垃圾箱）
+     * 检查文件夹名称是否已存在
      */
     public static boolean checkVisibleFolderName(ContentResolver resolver, String name) {
         Cursor cursor = resolver.query(Notes.CONTENT_NOTE_URI, null,
@@ -216,10 +193,8 @@ public class DataUtils {
                         " AND " + NoteColumns.SNIPPET + "=?",
                 new String[] { name }, null);
         boolean exist = false;
-        if(cursor != null) {
-            if(cursor.getCount() > 0) {
-                exist = true;
-            }
+        if (cursor != null) {
+            exist = cursor.getCount() > 0;
             cursor.close();
         }
         return exist;
@@ -238,16 +213,12 @@ public class DataUtils {
         HashSet<AppWidgetAttribute> set = null;
         if (c != null) {
             if (c.moveToFirst()) {
-                set = new HashSet<AppWidgetAttribute>();
+                set = new HashSet<>();
                 do {
-                    try {
-                        AppWidgetAttribute widget = new AppWidgetAttribute();
-                        widget.widgetId = c.getInt(0);
-                        widget.widgetType = c.getInt(1);
-                        set.add(widget);
-                    } catch (IndexOutOfBoundsException e) {
-                        Log.e(TAG, e.toString());
-                    }
+                    AppWidgetAttribute widget = new AppWidgetAttribute();
+                    widget.widgetId = c.getInt(0);
+                    widget.widgetType = c.getInt(1);
+                    set.add(widget);
                 } while (c.moveToNext());
             }
             c.close();
@@ -256,23 +227,19 @@ public class DataUtils {
     }
 
     /**
-     * 根据笔记ID获取通话笔记的电话号码
+     * 获取通话笔记的电话号码
      */
     public static String getCallNumberByNoteId(ContentResolver resolver, long noteId) {
         Cursor cursor = resolver.query(Notes.CONTENT_DATA_URI,
-                new String [] { CallNote.PHONE_NUMBER },
+                new String[] { CallNote.PHONE_NUMBER },
                 CallNote.NOTE_ID + "=? AND " + CallNote.MIME_TYPE + "=?",
-                new String [] { String.valueOf(noteId), CallNote.CONTENT_ITEM_TYPE },
+                new String[] { String.valueOf(noteId), CallNote.CONTENT_ITEM_TYPE },
                 null);
 
         if (cursor != null && cursor.moveToFirst()) {
-            try {
-                return cursor.getString(0);
-            } catch (IndexOutOfBoundsException e) {
-                Log.e(TAG, "Get call number fails " + e.toString());
-            } finally {
-                cursor.close();
-            }
+            String number = cursor.getString(0);
+            cursor.close();
+            return number;
         }
         return "";
     }
@@ -282,40 +249,32 @@ public class DataUtils {
      */
     public static long getNoteIdByPhoneNumberAndCallDate(ContentResolver resolver, String phoneNumber, long callDate) {
         Cursor cursor = resolver.query(Notes.CONTENT_DATA_URI,
-                new String [] { CallNote.NOTE_ID },
+                new String[] { CallNote.NOTE_ID },
                 CallNote.CALL_DATE + "=? AND " + CallNote.MIME_TYPE + "=? AND PHONE_NUMBERS_EQUAL("
                         + CallNote.PHONE_NUMBER + ",?)",
-                new String [] { String.valueOf(callDate), CallNote.CONTENT_ITEM_TYPE, phoneNumber },
+                new String[] { String.valueOf(callDate), CallNote.CONTENT_ITEM_TYPE, phoneNumber },
                 null);
 
-        if (cursor != null) {
-            if (cursor.moveToFirst()) {
-                try {
-                    return cursor.getLong(0);
-                } catch (IndexOutOfBoundsException e) {
-                    Log.e(TAG, "Get call note id fails " + e.toString());
-                }
-            }
+        if (cursor != null && cursor.moveToFirst()) {
+            long id = cursor.getLong(0);
             cursor.close();
+            return id;
         }
         return 0;
     }
 
     /**
-     * 根据笔记ID获取笔记摘要
+     * 获取笔记摘要
      */
     public static String getSnippetById(ContentResolver resolver, long noteId) {
         Cursor cursor = resolver.query(Notes.CONTENT_NOTE_URI,
-                new String [] { NoteColumns.SNIPPET },
+                new String[] { NoteColumns.SNIPPET },
                 NoteColumns.ID + "=?",
-                new String [] { String.valueOf(noteId)},
+                new String[] { String.valueOf(noteId) },
                 null);
 
-        if (cursor != null) {
-            String snippet = "";
-            if (cursor.moveToFirst()) {
-                snippet = cursor.getString(0);
-            }
+        if (cursor != null && cursor.moveToFirst()) {
+            String snippet = cursor.getString(0);
             cursor.close();
             return snippet;
         }
@@ -323,7 +282,7 @@ public class DataUtils {
     }
 
     /**
-     * 格式化笔记摘要：只取第一行并去空格（列表页显示用）
+     * 格式化笔记摘要（取第一行，去除空白）
      */
     public static String getFormattedSnippet(String snippet) {
         if (snippet != null) {
