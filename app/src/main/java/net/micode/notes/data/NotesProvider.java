@@ -7,7 +7,7 @@
  *
  *        http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable or agreed to in writing, software
+ * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
@@ -35,52 +35,36 @@ import net.micode.notes.data.Notes.NoteColumns;
 import net.micode.notes.data.NotesDatabaseHelper.TABLE;
 
 /**
- * 类名：NotesProvider
- * 从名字理解：笔记数据提供者
- * 继承：ContentProvider（Android 四大组件之一）
- * 功能：对外提供 增删改查 统一接口，封装数据库操作
- * 全局唯一数据访问入口
+ * 笔记数据提供者
+ *
+ * 【类功能】
+ * 1. 封装数据库操作，对外提供统一的数据访问接口
+ * 2. 支持note表和data表的增删改查
+ * 3. 支持系统搜索（SearchManager）
+ * 4. 自动维护版本号（用于同步）
+ *
+ * 【类间关系】
+ * - 继承ContentProvider：Android四大组件之一
+ * - 调用NotesDatabaseHelper：获取数据库实例
+ * - 被所有Activity/Service调用：通过ContentResolver访问
+ * - URI定义来自Notes类
  */
 public class NotesProvider extends ContentProvider {
 
-    /**
-     * mMatcher
-     * 从名字理解：URI 匹配器
-     * 系统类：UriMatcher
-     * 作用：根据传入的 URI 区分要操作的表/数据项
-     */
-    private static final UriMatcher mMatcher;
-
-    /**
-     * mHelper
-     * 从名字理解：数据库帮助类
-     * 类型：NotesDatabaseHelper
-     * 作用：获取数据库实例，管理表结构
-     */
-    private NotesDatabaseHelper mHelper;
-
+    private static final UriMatcher mMatcher;      // URI匹配器
+    private NotesDatabaseHelper mHelper;           // 数据库帮助类
     private static final String TAG = "NotesProvider";
 
-    // ==================== URI 匹配类型 ====================
-    /**
-     * URI_NOTE：匹配 /note → 整个笔记表
-     * URI_NOTE_ITEM：匹配 /note/# → 单条笔记
-     * URI_DATA：匹配 /data → 整个内容表
-     * URI_DATA_ITEM：匹配 /data/# → 单条内容
-     * URI_SEARCH：搜索
-     * URI_SEARCH_SUGGEST：搜索建议
-     */
-    private static final int URI_NOTE            = 1;
-    private static final int URI_NOTE_ITEM       = 2;
-    private static final int URI_DATA            = 3;
-    private static final int URI_DATA_ITEM       = 4;
-    private static final int URI_SEARCH          = 5;
-    private static final int URI_SEARCH_SUGGEST  = 6;
+    // ==================== URI匹配类型 ====================
+    private static final int URI_NOTE            = 1;   // /note
+    private static final int URI_NOTE_ITEM       = 2;   // /note/#
+    private static final int URI_DATA            = 3;   // /data
+    private static final int URI_DATA_ITEM       = 4;   // /data/#
+    private static final int URI_SEARCH          = 5;   // /search
+    private static final int URI_SEARCH_SUGGEST  = 6;   // 搜索建议
 
     /**
-     * 静态代码块
-     * 作用：初始化 URI 匹配规则
-     * Authority 来自 Notes.AUTHORITY
+     * 静态代码块：初始化URI匹配规则
      */
     static {
         mMatcher = new UriMatcher(UriMatcher.NO_MATCH);
@@ -94,71 +78,70 @@ public class NotesProvider extends ContentProvider {
     }
 
     /**
-     * NOTES_SEARCH_PROJECTION
-     * 从名字理解：搜索结果投影列
-     * 作用：定义系统搜索展示的字段
-     * 依赖：Android SearchManager
+     * 搜索结果投影列
+     * 定义系统搜索返回的数据格式
      */
-    private static final String NOTES_SEARCH_PROJECTION = NoteColumns.ID + ","
-            + NoteColumns.ID + " AS " + SearchManager.SUGGEST_COLUMN_INTENT_EXTRA_DATA + ","
-            + "TRIM(REPLACE(" + NoteColumns.SNIPPET + ", x'0A','')) AS " + SearchManager.SUGGEST_COLUMN_TEXT_1 + ","
-            + "TRIM(REPLACE(" + NoteColumns.SNIPPET + ", x'0A','')) AS " + SearchManager.SUGGEST_COLUMN_TEXT_2 + ","
-            + R.drawable.search_result + " AS " + SearchManager.SUGGEST_COLUMN_ICON_1 + ","
-            + "'" + Intent.ACTION_VIEW + "' AS " + SearchManager.SUGGEST_COLUMN_INTENT_ACTION + ","
-            + "'" + Notes.TextNote.CONTENT_TYPE + "' AS " + SearchManager.SUGGEST_COLUMN_INTENT_DATA;
+    private static final String NOTES_SEARCH_PROJECTION =
+            NoteColumns.ID + ","
+                    + NoteColumns.ID + " AS " + SearchManager.SUGGEST_COLUMN_INTENT_EXTRA_DATA + ","
+                    + "TRIM(REPLACE(" + NoteColumns.SNIPPET + ", x'0A','')) AS " + SearchManager.SUGGEST_COLUMN_TEXT_1 + ","
+                    + "TRIM(REPLACE(" + NoteColumns.SNIPPET + ", x'0A','')) AS " + SearchManager.SUGGEST_COLUMN_TEXT_2 + ","
+                    + R.drawable.search_result + " AS " + SearchManager.SUGGEST_COLUMN_ICON_1 + ","
+                    + "'" + Intent.ACTION_VIEW + "' AS " + SearchManager.SUGGEST_COLUMN_INTENT_ACTION + ","
+                    + "'" + Notes.TextNote.CONTENT_TYPE + "' AS " + SearchManager.SUGGEST_COLUMN_INTENT_DATA;
 
     /**
-     * NOTES_SNIPPET_SEARCH_QUERY
-     * 从名字理解：笔记搜索语句
-     * 功能：模糊查询 snippet，排除回收站
+     * 笔记搜索SQL语句
+     * 模糊匹配snippet，排除回收站
      */
-    private static String NOTES_SNIPPET_SEARCH_QUERY = "SELECT " + NOTES_SEARCH_PROJECTION
-            + " FROM " + TABLE.NOTE
-            + " WHERE " + NoteColumns.SNIPPET + " LIKE ?"
-            + " AND " + NoteColumns.PARENT_ID + "<>" + Notes.ID_TRASH_FOLER
-            + " AND " + NoteColumns.TYPE + "=" + Notes.TYPE_NOTE;
+    private static String NOTES_SNIPPET_SEARCH_QUERY =
+            "SELECT " + NOTES_SEARCH_PROJECTION
+                    + " FROM " + TABLE.NOTE
+                    + " WHERE " + NoteColumns.SNIPPET + " LIKE ?"
+                    + " AND " + NoteColumns.PARENT_ID + "<>" + Notes.ID_TRASH_FOLER
+                    + " AND " + NoteColumns.TYPE + "=" + Notes.TYPE_NOTE;
 
-    /**
-     * onCreate
-     * 系统回调
-     * 作用：初始化数据库帮助类单例
-     */
+    // ====================== ContentProvider生命周期 ======================
+
     @Override
     public boolean onCreate() {
         mHelper = NotesDatabaseHelper.getInstance(getContext());
         return true;
     }
 
-    /**
-     * query
-     * 从名字理解：查询数据
-     * 重写 ContentProvider
-     * 功能：根据 URI 查询 note / data / search
-     */
+    // ====================== 查询 ======================
+
     @Override
     public Cursor query(Uri uri, String[] projection, String selection, String[] selectionArgs,
                         String sortOrder) {
         Cursor c = null;
         SQLiteDatabase db = mHelper.getReadableDatabase();
         String id = null;
+
         switch (mMatcher.match(uri)) {
-            case URI_NOTE:
+            case URI_NOTE:      // 查询所有笔记/文件夹
                 c = db.query(TABLE.NOTE, projection, selection, selectionArgs, null, null, sortOrder);
                 break;
-            case URI_NOTE_ITEM:
+
+            case URI_NOTE_ITEM: // 查询单条笔记
                 id = uri.getPathSegments().get(1);
-                c = db.query(TABLE.NOTE, projection, NoteColumns.ID + "=" + id
-                        + parseSelection(selection), selectionArgs, null, null, sortOrder);
+                c = db.query(TABLE.NOTE, projection,
+                        NoteColumns.ID + "=" + id + parseSelection(selection),
+                        selectionArgs, null, null, sortOrder);
                 break;
-            case URI_DATA:
+
+            case URI_DATA:      // 查询所有数据
                 c = db.query(TABLE.DATA, projection, selection, selectionArgs, null, null, sortOrder);
                 break;
-            case URI_DATA_ITEM:
+
+            case URI_DATA_ITEM: // 查询单条数据
                 id = uri.getPathSegments().get(1);
-                c = db.query(TABLE.DATA, projection, DataColumns.ID + "=" + id
-                        + parseSelection(selection), selectionArgs, null, null, sortOrder);
+                c = db.query(TABLE.DATA, projection,
+                        DataColumns.ID + "=" + id + parseSelection(selection),
+                        selectionArgs, null, null, sortOrder);
                 break;
-            case URI_SEARCH:
+
+            case URI_SEARCH:    // 搜索笔记
             case URI_SEARCH_SUGGEST:
                 String searchString = null;
                 if (mMatcher.match(uri) == URI_SEARCH_SUGGEST) {
@@ -174,25 +157,24 @@ public class NotesProvider extends ContentProvider {
                 searchString = String.format("%%%s%%", searchString);
                 c = db.rawQuery(NOTES_SNIPPET_SEARCH_QUERY, new String[] { searchString });
                 break;
+
             default:
                 throw new IllegalArgumentException("Unknown URI " + uri);
         }
+
         if (c != null) {
             c.setNotificationUri(getContext().getContentResolver(), uri);
         }
         return c;
     }
 
-    /**
-     * insert
-     * 从名字理解：插入数据
-     * 功能：向 note 或 data 表插入数据
-     * 完成后发送通知更新
-     */
+    // ====================== 插入 ======================
+
     @Override
     public Uri insert(Uri uri, ContentValues values) {
         SQLiteDatabase db = mHelper.getWritableDatabase();
         long dataId = 0, noteId = 0, insertedId = 0;
+
         switch (mMatcher.match(uri)) {
             case URI_NOTE:
                 insertedId = noteId = db.insert(TABLE.NOTE, null, values);
@@ -203,6 +185,8 @@ public class NotesProvider extends ContentProvider {
             default:
                 throw new IllegalArgumentException("Unknown URI " + uri);
         }
+
+        // 发送数据变化通知
         if (noteId > 0) {
             getContext().getContentResolver().notifyChange(
                     ContentUris.withAppendedId(Notes.CONTENT_NOTE_URI, noteId), null);
@@ -211,44 +195,52 @@ public class NotesProvider extends ContentProvider {
             getContext().getContentResolver().notifyChange(
                     ContentUris.withAppendedId(Notes.CONTENT_DATA_URI, dataId), null);
         }
+
         return ContentUris.withAppendedId(uri, insertedId);
     }
 
-    /**
-     * delete
-     * 从名字理解：删除数据
-     * 保护系统ID（≤0）不被删除
-     */
+    // ====================== 删除 ======================
+
     @Override
     public int delete(Uri uri, String selection, String[] selectionArgs) {
         int count = 0;
         String id = null;
         SQLiteDatabase db = mHelper.getWritableDatabase();
         boolean deleteData = false;
+
         switch (mMatcher.match(uri)) {
             case URI_NOTE:
                 count = db.delete(TABLE.NOTE, selection, selectionArgs);
                 break;
+
             case URI_NOTE_ITEM:
                 id = uri.getPathSegments().get(1);
                 long noteId = Long.valueOf(id);
-                if (noteId <= 0) {
+                if (noteId <= 0) {  // 系统文件夹不能删除
                     break;
                 }
-                count = db.delete(TABLE.NOTE, NoteColumns.ID + "=" + id + parseSelection(selection), selectionArgs);
+                count = db.delete(TABLE.NOTE,
+                        NoteColumns.ID + "=" + id + parseSelection(selection),
+                        selectionArgs);
                 break;
+
             case URI_DATA:
                 count = db.delete(TABLE.DATA, selection, selectionArgs);
                 deleteData = true;
                 break;
+
             case URI_DATA_ITEM:
                 id = uri.getPathSegments().get(1);
-                count = db.delete(TABLE.DATA, DataColumns.ID + "=" + id + parseSelection(selection), selectionArgs);
+                count = db.delete(TABLE.DATA,
+                        DataColumns.ID + "=" + id + parseSelection(selection),
+                        selectionArgs);
                 deleteData = true;
                 break;
+
             default:
                 throw new IllegalArgumentException("Unknown URI " + uri);
         }
+
         if (count > 0) {
             if (deleteData) {
                 getContext().getContentResolver().notifyChange(Notes.CONTENT_NOTE_URI, null);
@@ -258,39 +250,46 @@ public class NotesProvider extends ContentProvider {
         return count;
     }
 
-    /**
-     * update
-     * 从名字理解：更新数据
-     * 自动更新版本号（用于同步）
-     */
+    // ====================== 更新 ======================
+
     @Override
     public int update(Uri uri, ContentValues values, String selection, String[] selectionArgs) {
         int count = 0;
         String id = null;
         SQLiteDatabase db = mHelper.getWritableDatabase();
         boolean updateData = false;
+
         switch (mMatcher.match(uri)) {
             case URI_NOTE:
-                increaseNoteVersion(-1, selection, selectionArgs);
+                increaseNoteVersion(-1, selection, selectionArgs);  // 版本号+1
                 count = db.update(TABLE.NOTE, values, selection, selectionArgs);
                 break;
+
             case URI_NOTE_ITEM:
                 id = uri.getPathSegments().get(1);
                 increaseNoteVersion(Long.valueOf(id), selection, selectionArgs);
-                count = db.update(TABLE.NOTE, values, NoteColumns.ID + "=" + id + parseSelection(selection), selectionArgs);
+                count = db.update(TABLE.NOTE, values,
+                        NoteColumns.ID + "=" + id + parseSelection(selection),
+                        selectionArgs);
                 break;
+
             case URI_DATA:
                 count = db.update(TABLE.DATA, values, selection, selectionArgs);
                 updateData = true;
                 break;
+
             case URI_DATA_ITEM:
                 id = uri.getPathSegments().get(1);
-                count = db.update(TABLE.DATA, values, DataColumns.ID + "=" + id + parseSelection(selection), selectionArgs);
+                count = db.update(TABLE.DATA, values,
+                        DataColumns.ID + "=" + id + parseSelection(selection),
+                        selectionArgs);
                 updateData = true;
                 break;
+
             default:
                 throw new IllegalArgumentException("Unknown URI " + uri);
         }
+
         if (count > 0) {
             if (updateData) {
                 getContext().getContentResolver().notifyChange(Notes.CONTENT_NOTE_URI, null);
@@ -300,19 +299,20 @@ public class NotesProvider extends ContentProvider {
         return count;
     }
 
+    // ====================== 辅助方法 ======================
+
     /**
-     * parseSelection
-     * 从名字理解：拼接查询条件
-     * 作用：安全拼接 SQL 条件
+     * 拼接查询条件
+     * @param selection 原有条件
+     * @return 带AND的新条件
      */
     private String parseSelection(String selection) {
         return (!TextUtils.isEmpty(selection) ? " AND (" + selection + ')' : "");
     }
 
     /**
-     * increaseNoteVersion
-     * 从名字理解：增加笔记版本
-     * 功能：同步机制使用，每次更新自动+1
+     * 增加笔记版本号（用于同步）
+     * 每次更新笔记时自动将version字段+1
      */
     private void increaseNoteVersion(long id, String selection, String[] selectionArgs) {
         StringBuilder sql = new StringBuilder(120);
@@ -338,13 +338,8 @@ public class NotesProvider extends ContentProvider {
         mHelper.getWritableDatabase().execSQL(sql.toString());
     }
 
-    /**
-     * getType
-     * 未实现
-     */
     @Override
     public String getType(Uri uri) {
         return null;
     }
-
 }

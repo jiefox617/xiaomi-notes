@@ -27,56 +27,41 @@ import net.micode.notes.data.Notes.DataConstants;
 import net.micode.notes.data.Notes.NoteColumns;
 
 /**
- * 类名：NotesDatabaseHelper
- * 从名字理解：笔记数据库帮助类
- * 继承：SQLiteOpenHelper（Android 系统数据库管理类）
- * 功能：创建、升级数据库，管理表结构与触发器
+ * 笔记数据库帮助类
+ *
+ * 【类功能】
+ * 1. 创建和管理笔记数据库（note.db）
+ * 2. 定义数据库表结构（note表、data表）
+ * 3. 定义触发器（维护notes_count、snippet等字段的自动更新）
+ * 4. 管理数据库版本升级
+ *
+ * 【类间关系】
+ * - 被NotesProvider调用：提供SQLiteDatabase实例
+ * - 继承SQLiteOpenHelper：Android标准数据库管理类
+ * - 使用Notes常量：引用表名、字段名、系统文件夹ID
  */
 public class NotesDatabaseHelper extends SQLiteOpenHelper {
 
-    /**
-     * DB_NAME
-     * 从名字理解：数据库文件名
-     * 作用：app 内部存储的 note.db 数据库文件
-     */
-    private static final String DB_NAME = "note.db";
+    // ==================== 数据库基本信息 ====================
+    private static final String DB_NAME = "note.db";    // 数据库文件名
+    private static final int DB_VERSION = 4;             // 数据库版本
 
-    /**
-     * DB_VERSION
-     * 从名字理解：数据库版本
-     * 用于升级表结构
-     */
-    private static final int DB_VERSION = 4;
+    // 单例实例
+    private static NotesDatabaseHelper mInstance;
 
-    /**
-     * TABLE 接口
-     * 从名字理解：表名集合
-     * 定义数据库中两张主表
-     * Ctrl+左键可在代码中全局查看表使用位置
-     */
+    // ==================== 表名定义 ====================
     public interface TABLE {
-        /** 笔记/文件夹主表 */
-        public static final String NOTE = "note";
-        /** 笔记内容/附加数据表 */
-        public static final String DATA = "data";
+        public static final String NOTE = "note";   // 笔记主表
+        public static final String DATA = "data";   // 数据扩展表
     }
 
     private static final String TAG = "NotesDatabaseHelper";
 
-    /**
-     * mInstance
-     * 单例模式
-     * 作用：全局只保留一个数据库连接，避免资源泄漏
-     */
-    private static NotesDatabaseHelper mInstance;
-
-    // ==================== 建表语句 ====================
+    // ==================== 建表SQL ====================
 
     /**
-     * CREATE_NOTE_TABLE_SQL
-     * 从名字理解：创建 note 表
-     * 表结构来自 NoteColumns 接口定义
-     * 作用：存储笔记、文件夹、系统目录信息
+     * note表建表语句
+     * 存储笔记和文件夹的基本信息
      */
     private static final String CREATE_NOTE_TABLE_SQL =
             "CREATE TABLE " + TABLE.NOTE + "(" +
@@ -100,10 +85,8 @@ public class NotesDatabaseHelper extends SQLiteOpenHelper {
                     ")";
 
     /**
-     * CREATE_DATA_TABLE_SQL
-     * 从名字理解：创建 data 表
-     * 表结构来自 DataColumns
-     * 作用：存储文本内容、通话记录等扩展数据
+     * data表建表语句
+     * 存储笔记的具体内容（支持多种MIME类型）
      */
     private static final String CREATE_DATA_TABLE_SQL =
             "CREATE TABLE " + TABLE.DATA + "(" +
@@ -121,9 +104,7 @@ public class NotesDatabaseHelper extends SQLiteOpenHelper {
                     ")";
 
     /**
-     * CREATE_DATA_NOTE_ID_INDEX_SQL
-     * 从名字理解：为 note_id 建立索引
-     * 作用：加速根据笔记ID查询内容
+     * 索引：加速note_id查询
      */
     private static final String CREATE_DATA_NOTE_ID_INDEX_SQL =
             "CREATE INDEX IF NOT EXISTS note_id_index ON " +
@@ -132,7 +113,7 @@ public class NotesDatabaseHelper extends SQLiteOpenHelper {
     // ==================== 触发器 ====================
 
     /**
-     * 触发器：修改父文件夹 → 目标文件夹计数 +1
+     * 触发器：移动笔记到新文件夹时，新文件夹计数+1
      */
     private static final String NOTE_INCREASE_FOLDER_COUNT_ON_UPDATE_TRIGGER =
             "CREATE TRIGGER increase_folder_count_on_update "+
@@ -144,7 +125,7 @@ public class NotesDatabaseHelper extends SQLiteOpenHelper {
                     " END";
 
     /**
-     * 触发器：修改父文件夹 → 原文件夹计数 -1
+     * 触发器：移出笔记时，原文件夹计数-1
      */
     private static final String NOTE_DECREASE_FOLDER_COUNT_ON_UPDATE_TRIGGER =
             "CREATE TRIGGER decrease_folder_count_on_update " +
@@ -157,7 +138,7 @@ public class NotesDatabaseHelper extends SQLiteOpenHelper {
                     " END";
 
     /**
-     * 触发器：插入笔记 → 父文件夹计数 +1
+     * 触发器：新增笔记时，父文件夹计数+1
      */
     private static final String NOTE_INCREASE_FOLDER_COUNT_ON_INSERT_TRIGGER =
             "CREATE TRIGGER increase_folder_count_on_insert " +
@@ -169,7 +150,7 @@ public class NotesDatabaseHelper extends SQLiteOpenHelper {
                     " END";
 
     /**
-     * 触发器：删除笔记 → 父文件夹计数 -1
+     * 触发器：删除笔记时，父文件夹计数-1
      */
     private static final String NOTE_DECREASE_FOLDER_COUNT_ON_DELETE_TRIGGER =
             "CREATE TRIGGER decrease_folder_count_on_delete " +
@@ -182,7 +163,7 @@ public class NotesDatabaseHelper extends SQLiteOpenHelper {
                     " END";
 
     /**
-     * 触发器：插入文本 → 更新笔记摘要 snippet
+     * 触发器：插入文本时，自动更新笔记摘要
      */
     private static final String DATA_UPDATE_NOTE_CONTENT_ON_INSERT_TRIGGER =
             "CREATE TRIGGER update_note_content_on_insert " +
@@ -195,7 +176,7 @@ public class NotesDatabaseHelper extends SQLiteOpenHelper {
                     " END";
 
     /**
-     * 触发器：更新文本 → 同步更新摘要
+     * 触发器：更新文本时，同步更新摘要
      */
     private static final String DATA_UPDATE_NOTE_CONTENT_ON_UPDATE_TRIGGER =
             "CREATE TRIGGER update_note_content_on_update " +
@@ -208,7 +189,7 @@ public class NotesDatabaseHelper extends SQLiteOpenHelper {
                     " END";
 
     /**
-     * 触发器：删除文本 → 清空摘要
+     * 触发器：删除文本时，清空摘要
      */
     private static final String DATA_UPDATE_NOTE_CONTENT_ON_DELETE_TRIGGER =
             "CREATE TRIGGER update_note_content_on_delete " +
@@ -221,7 +202,7 @@ public class NotesDatabaseHelper extends SQLiteOpenHelper {
                     " END";
 
     /**
-     * 触发器：删除笔记 → 级联删除 data 表内容
+     * 触发器：删除笔记时，级联删除其所有数据
      */
     private static final String NOTE_DELETE_DATA_ON_DELETE_TRIGGER =
             "CREATE TRIGGER delete_data_on_delete " +
@@ -232,7 +213,7 @@ public class NotesDatabaseHelper extends SQLiteOpenHelper {
                     " END";
 
     /**
-     * 触发器：删除文件夹 → 级联删除子笔记
+     * 触发器：删除文件夹时，级联删除其所有子笔记
      */
     private static final String FOLDER_DELETE_NOTES_ON_DELETE_TRIGGER =
             "CREATE TRIGGER folder_delete_notes_on_delete " +
@@ -243,7 +224,7 @@ public class NotesDatabaseHelper extends SQLiteOpenHelper {
                     " END";
 
     /**
-     * 触发器：文件夹移入回收站 → 子笔记全部移入回收站
+     * 触发器：文件夹移入回收站时，所有子笔记也移入回收站
      */
     private static final String FOLDER_MOVE_NOTES_ON_TRASH_TRIGGER =
             "CREATE TRIGGER folder_move_notes_on_trash " +
@@ -255,18 +236,26 @@ public class NotesDatabaseHelper extends SQLiteOpenHelper {
                     "  WHERE " + NoteColumns.PARENT_ID + "=old." + NoteColumns.ID + ";" +
                     " END";
 
-    /**
-     * 构造方法
-     * 调用父类 SQLiteOpenHelper 初始化数据库
-     */
-    public NotesDatabaseHelper(Context context) {
+    // ====================== 构造方法 ======================
+
+    private NotesDatabaseHelper(Context context) {
         super(context, DB_NAME, null, DB_VERSION);
     }
 
     /**
-     * createNoteTable
-     * 从名字理解：创建 note 表
-     * 同时创建触发器与系统文件夹
+     * 单例获取实例
+     */
+    static synchronized NotesDatabaseHelper getInstance(Context context) {
+        if (mInstance == null) {
+            mInstance = new NotesDatabaseHelper(context);
+        }
+        return mInstance;
+    }
+
+    // ====================== 表创建方法 ======================
+
+    /**
+     * 创建note表及触发器
      */
     public void createNoteTable(SQLiteDatabase db) {
         db.execSQL(CREATE_NOTE_TABLE_SQL);
@@ -276,8 +265,7 @@ public class NotesDatabaseHelper extends SQLiteOpenHelper {
     }
 
     /**
-     * reCreateNoteTableTriggers
-     * 重建 note 表所有触发器
+     * 重建note表所有触发器
      */
     private void reCreateNoteTableTriggers(SQLiteDatabase db) {
         db.execSQL("DROP TRIGGER IF EXISTS increase_folder_count_on_update");
@@ -298,26 +286,29 @@ public class NotesDatabaseHelper extends SQLiteOpenHelper {
     }
 
     /**
-     * createSystemFolder
-     * 创建系统内置文件夹：根目录、通话、临时、回收站
+     * 创建系统内置文件夹
      */
     private void createSystemFolder(SQLiteDatabase db) {
         ContentValues values = new ContentValues();
 
+        // 通话记录文件夹
         values.put(NoteColumns.ID, Notes.ID_CALL_RECORD_FOLDER);
         values.put(NoteColumns.TYPE, Notes.TYPE_SYSTEM);
         db.insert(TABLE.NOTE, null, values);
 
+        // 根文件夹
         values.clear();
         values.put(NoteColumns.ID, Notes.ID_ROOT_FOLDER);
         values.put(NoteColumns.TYPE, Notes.TYPE_SYSTEM);
         db.insert(TABLE.NOTE, null, values);
 
+        // 临时文件夹
         values.clear();
         values.put(NoteColumns.ID, Notes.ID_TEMPARAY_FOLDER);
         values.put(NoteColumns.TYPE, Notes.TYPE_SYSTEM);
         db.insert(TABLE.NOTE, null, values);
 
+        // 回收站
         values.clear();
         values.put(NoteColumns.ID, Notes.ID_TRASH_FOLER);
         values.put(NoteColumns.TYPE, Notes.TYPE_SYSTEM);
@@ -325,8 +316,7 @@ public class NotesDatabaseHelper extends SQLiteOpenHelper {
     }
 
     /**
-     * createDataTable
-     * 创建 data 表、索引、触发器
+     * 创建data表及触发器
      */
     public void createDataTable(SQLiteDatabase db) {
         db.execSQL(CREATE_DATA_TABLE_SQL);
@@ -336,8 +326,7 @@ public class NotesDatabaseHelper extends SQLiteOpenHelper {
     }
 
     /**
-     * reCreateDataTableTriggers
-     * 重建 data 表触发器
+     * 重建data表触发器
      */
     private void reCreateDataTableTriggers(SQLiteDatabase db) {
         db.execSQL("DROP TRIGGER IF EXISTS update_note_content_on_insert");
@@ -349,69 +338,54 @@ public class NotesDatabaseHelper extends SQLiteOpenHelper {
         db.execSQL(DATA_UPDATE_NOTE_CONTENT_ON_DELETE_TRIGGER);
     }
 
-    /**
-     * getInstance
-     * 单例获取实例
-     */
-    static synchronized NotesDatabaseHelper getInstance(Context context) {
-        if (mInstance == null) {
-            mInstance = new NotesDatabaseHelper(context);
-        }
-        return mInstance;
-    }
+    // ====================== SQLiteOpenHelper回调 ======================
 
-    /**
-     * onCreate
-     * 系统回调：首次创建数据库
-     * 创建两张主表
-     */
     @Override
     public void onCreate(SQLiteDatabase db) {
         createNoteTable(db);
         createDataTable(db);
     }
 
-    /**
-     * onUpgrade
-     * 数据库版本升级
-     * 按版本号逐步升级表结构
-     */
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
         boolean reCreateTriggers = false;
         boolean skipV2 = false;
 
+        // V1 → V2：重建表
         if (oldVersion == 1) {
             upgradeToV2(db);
             skipV2 = true;
             oldVersion++;
         }
 
+        // V2 → V3：添加gtask_id字段和回收站
         if (oldVersion == 2 && !skipV2) {
             upgradeToV3(db);
             reCreateTriggers = true;
             oldVersion++;
         }
 
+        // V3 → V4：添加version字段
         if (oldVersion == 3) {
             upgradeToV4(db);
             oldVersion++;
         }
 
+        // 重建触发器
         if (reCreateTriggers) {
             reCreateNoteTableTriggers(db);
             reCreateDataTableTriggers(db);
         }
 
         if (oldVersion != newVersion) {
-            throw new IllegalStateException("Upgrade notes database to version " + newVersion
-                    + "fails");
+            throw new IllegalStateException("Upgrade notes database to version " + newVersion + "fails");
         }
     }
 
+    // ====================== 版本升级方法 ======================
+
     /**
-     * upgradeToV2
-     * 版本1→2：重建表
+     * V1 → V2：删除并重建所有表
      */
     private void upgradeToV2(SQLiteDatabase db) {
         db.execSQL("DROP TABLE IF EXISTS " + TABLE.NOTE);
@@ -421,8 +395,7 @@ public class NotesDatabaseHelper extends SQLiteOpenHelper {
     }
 
     /**
-     * upgradeToV3
-     * 版本2→3：添加 gtask_id 字段、回收站
+     * V2 → V3：添加gtask_id字段和回收站
      */
     private void upgradeToV3(SQLiteDatabase db) {
         db.execSQL("DROP TRIGGER IF EXISTS update_note_modified_date_on_insert");
@@ -439,8 +412,7 @@ public class NotesDatabaseHelper extends SQLiteOpenHelper {
     }
 
     /**
-     * upgradeToV4
-     * 版本3→4：添加 version 版本字段
+     * V3 → V4：添加version字段
      */
     private void upgradeToV4(SQLiteDatabase db) {
         db.execSQL("ALTER TABLE " + TABLE.NOTE + " ADD COLUMN " + NoteColumns.VERSION
