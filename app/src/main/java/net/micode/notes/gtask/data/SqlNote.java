@@ -38,34 +38,21 @@ import org.json.JSONObject;
 import java.util.ArrayList;
 
 /**
- * 类名：SqlNote
- * 从名字理解：SQL 笔记操作类
- * 功能：封装 本地 note 表 的读写操作
- * 专门用于 Google Task 同步时操作本地笔记/文件夹数据
- * 依赖：ContentResolver + NotesProvider
- * 组合：内部包含 SqlData 管理内容数据
+ * SQL笔记操作类
+ *
+ * 【类功能】
+ * 封装本地note表的读写操作，专门用于Google Tasks同步时操作本地笔记/文件夹数据
+ *
+ * 【类间关系】
+ * - 被GTaskManager使用：同步时操作本地笔记
+ * - 包含SqlData：管理笔记的扩展内容
+ * - 使用ContentResolver：通过NotesProvider访问数据库
  */
 public class SqlNote {
-    /**
-     * TAG
-     * 从名字理解：类名简称 SqlNote
-     * 用于日志输出
-     */
     private static final String TAG = SqlNote.class.getSimpleName();
-
-    /**
-     * INVALID_ID
-     * 从名字理解：无效 ID
-     * 作用：标记未初始化的笔记 ID
-     */
     private static final int INVALID_ID = -99999;
 
-    /**
-     * PROJECTION_NOTE
-     * 从名字理解：查询 note 表的投影列
-     * 来自 NoteColumns 接口定义
-     * 作用：同步时需要查询的全部字段
-     */
+    // 查询投影列
     public static final String[] PROJECTION_NOTE = new String[] {
             NoteColumns.ID, NoteColumns.ALERTED_DATE, NoteColumns.BG_COLOR_ID,
             NoteColumns.CREATED_DATE, NoteColumns.HAS_ATTACHMENT, NoteColumns.MODIFIED_DATE,
@@ -75,11 +62,7 @@ public class SqlNote {
             NoteColumns.VERSION
     };
 
-    /**
-     * 列索引
-     * 与 PROJECTION_NOTE 顺序一一对应
-     * 用于从 Cursor 快速取值
-     */
+    // 列索引
     public static final int ID_COLUMN = 0;
     public static final int ALERTED_DATE_COLUMN = 1;
     public static final int BG_COLOR_ID_COLUMN = 2;
@@ -98,61 +81,27 @@ public class SqlNote {
     public static final int GTASK_ID_COLUMN = 15;
     public static final int VERSION_COLUMN = 16;
 
-    /**
-     * mContext
-     * 上下文，用于获取资源、ContentResolver
-     */
     private Context mContext;
-
-    /**
-     * mContentResolver
-     * 内容解析器
-     * 系统类：ContentResolver
-     * 作用：访问 ContentProvider 操作数据库
-     */
     private ContentResolver mContentResolver;
+    private boolean mIsCreate;           // 是否新建
+    private long mId;                    // 笔记ID
+    private long mAlertDate;             // 提醒时间
+    private int mBgColorId;              // 背景色
+    private long mCreatedDate;           // 创建时间
+    private int mHasAttachment;          // 是否有附件
+    private long mModifiedDate;          // 修改时间
+    private long mParentId;              // 父文件夹ID
+    private String mSnippet;             // 摘要
+    private int mType;                   // 类型
+    private int mWidgetId;               // 小部件ID
+    private int mWidgetType;             // 小部件类型
+    private long mOriginParent;          // 原始父文件夹
+    private long mVersion;               // 版本号
+    private ContentValues mDiffNoteValues;  // 变更的字段
+    private ArrayList<SqlData> mDataList;   // 内容数据列表
 
-    /**
-     * mIsCreate
-     * 从名字理解：是否为新建笔记
-     * true = 未入库，需要 insert
-     * false = 已存在，需要 update
-     */
-    private boolean mIsCreate;
+    // ====================== 构造方法 ======================
 
-    // ==================== 笔记字段 ====================
-    private long mId;                // 笔记ID
-    private long mAlertDate;         // 提醒时间
-    private int mBgColorId;          // 背景色
-    private long mCreatedDate;       // 创建时间
-    private int mHasAttachment;      // 是否有附件
-    private long mModifiedDate;     // 修改时间
-    private long mParentId;          // 父文件夹ID
-    private String mSnippet;         // 摘要
-    private int mType;               // 类型：笔记/文件夹/系统
-    private int mWidgetId;           // 小部件ID
-    private int mWidgetType;         // 小部件类型
-    private long mOriginParent;      // 原始父文件夹
-    private long mVersion;           // 版本号（同步用）
-
-    /**
-     * mDiffNoteValues
-     * 从名字理解：变更的字段值
-     * 作用：只保存变化的字段，提高更新效率
-     */
-    private ContentValues mDiffNoteValues;
-
-    /**
-     * mDataList
-     * 从名字理解：SqlData 列表
-     * 作用：管理笔记对应的内容数据（data 表）
-     */
-    private ArrayList<SqlData> mDataList;
-
-    /**
-     * 构造方法：创建新笔记
-     * 初始化默认值
-     */
     public SqlNote(Context context) {
         mContext = context;
         mContentResolver = context.getContentResolver();
@@ -174,9 +123,6 @@ public class SqlNote {
         mDataList = new ArrayList<SqlData>();
     }
 
-    /**
-     * 构造方法：从 Cursor 加载已有笔记
-     */
     public SqlNote(Context context, Cursor c) {
         mContext = context;
         mContentResolver = context.getContentResolver();
@@ -188,9 +134,6 @@ public class SqlNote {
         mDiffNoteValues = new ContentValues();
     }
 
-    /**
-     * 构造方法：通过 ID 加载笔记
-     */
     public SqlNote(Context context, long id) {
         mContext = context;
         mContentResolver = context.getContentResolver();
@@ -202,10 +145,8 @@ public class SqlNote {
         mDiffNoteValues = new ContentValues();
     }
 
-    /**
-     * 方法名：loadFromCursor(long id)
-     * 从名字理解：通过 ID 查询并加载笔记
-     */
+    // ====================== 数据加载 ======================
+
     private void loadFromCursor(long id) {
         Cursor c = null;
         try {
@@ -220,10 +161,6 @@ public class SqlNote {
         }
     }
 
-    /**
-     * 方法名：loadFromCursor(Cursor c)
-     * 从名字理解：从游标赋值到成员变量
-     */
     private void loadFromCursor(Cursor c) {
         mId = c.getLong(ID_COLUMN);
         mAlertDate = c.getLong(ALERTED_DATE_COLUMN);
@@ -239,11 +176,6 @@ public class SqlNote {
         mVersion = c.getLong(VERSION_COLUMN);
     }
 
-    /**
-     * 方法名：loadDataContent
-     * 从名字理解：加载笔记对应的内容数据
-     * 查询 data 表并封装成 SqlData
-     */
     private void loadDataContent() {
         Cursor c = null;
         mDataList.clear();
@@ -261,11 +193,10 @@ public class SqlNote {
         }
     }
 
+    // ====================== JSON转换 ======================
+
     /**
-     * 方法名：setContent
-     * 从名字理解：从 JSON 设置笔记内容
-     * 作用：将同步 JSON 解析成本地对象
-     * 支持：文件夹、普通笔记
+     * 从JSON设置笔记内容
      */
     public boolean setContent(JSONObject js) {
         try {
@@ -273,7 +204,7 @@ public class SqlNote {
             if (note.getInt(NoteColumns.TYPE) == Notes.TYPE_SYSTEM) {
                 Log.w(TAG, "cannot set system folder");
             } else if (note.getInt(NoteColumns.TYPE) == Notes.TYPE_FOLDER) {
-                // 文件夹只更新摘要和类型
+                // 文件夹
                 String snippet = note.has(NoteColumns.SNIPPET) ? note.getString(NoteColumns.SNIPPET) : "";
                 if (mIsCreate || !mSnippet.equals(snippet)) {
                     mDiffNoteValues.put(NoteColumns.SNIPPET, snippet);
@@ -286,8 +217,9 @@ public class SqlNote {
                 }
                 mType = type;
             } else if (note.getInt(NoteColumns.TYPE) == Notes.TYPE_NOTE) {
+                // 普通笔记
                 JSONArray dataArray = js.getJSONArray(GTaskStringUtils.META_HEAD_DATA);
-                // 解析所有基础字段
+
                 long id = note.has(NoteColumns.ID) ? note.getLong(NoteColumns.ID) : INVALID_ID;
                 if (mIsCreate || mId != id) {
                     mDiffNoteValues.put(NoteColumns.ID, id);
@@ -387,9 +319,7 @@ public class SqlNote {
     }
 
     /**
-     * 方法名：getContent
-     * 从名字理解：转为同步 JSON
-     * 作用：将本地笔记转为 JSON 用于上传
+     * 转为同步JSON
      */
     public JSONObject getContent() {
         try {
@@ -429,7 +359,8 @@ public class SqlNote {
         return null;
     }
 
-    // ==================== SET 方法 ====================
+    // ====================== Setter ======================
+
     public void setParentId(long id) {
         mParentId = id;
         mDiffNoteValues.put(NoteColumns.PARENT_ID, id);
@@ -447,7 +378,8 @@ public class SqlNote {
         mDiffNoteValues.put(NoteColumns.LOCAL_MODIFIED, 0);
     }
 
-    // ==================== GET 方法 ====================
+    // ====================== Getter ======================
+
     public long getId() {
         return mId;
     }
@@ -465,15 +397,12 @@ public class SqlNote {
     }
 
     /**
-     * 方法名：commit
-     * 从名字理解：提交变更到数据库
-     * 新建 → insert
-     * 更新 → update（支持版本校验）
-     * 同时提交子项 SqlData
+     * 提交变更到数据库
+     * @param validateVersion 是否校验版本
      */
     public void commit(boolean validateVersion) {
         if (mIsCreate) {
-            // 新建笔记
+            // 新建
             if (mId == INVALID_ID && mDiffNoteValues.containsKey(NoteColumns.ID)) {
                 mDiffNoteValues.remove(NoteColumns.ID);
             }
@@ -487,7 +416,7 @@ public class SqlNote {
                 }
             }
         } else {
-            // 更新笔记
+            // 更新
             if (mDiffNoteValues.size() > 0) {
                 mVersion++;
                 int result = 0;
@@ -498,6 +427,9 @@ public class SqlNote {
                     result = mContentResolver.update(Notes.CONTENT_NOTE_URI, mDiffNoteValues,
                             "(" + NoteColumns.ID + "=?) AND (" + NoteColumns.VERSION + "<=?)",
                             new String[] { String.valueOf(mId), String.valueOf(mVersion) });
+                }
+                if (result == 0) {
+                    Log.w(TAG, "there is no update. maybe user updates note when syncing");
                 }
             }
 

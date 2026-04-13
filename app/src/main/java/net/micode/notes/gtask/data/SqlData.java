@@ -35,107 +35,44 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
- * 类名：SqlData
- * 从名字理解：SQL 数据操作类
- * 功能：封装 本地数据库 data 表 的读写操作
- * 专门用于 Google Task 同步时操作本地笔记内容数据
- * 依赖：ContentResolver 访问 NotesProvider
+ * SQL数据操作类
+ *
+ * 【类功能】
+ * 封装本地数据库data表的读写操作，专门用于Google Tasks同步时操作笔记内容数据
+ *
+ * 【类间关系】
+ * - 被SqlNote调用：管理笔记的扩展数据
+ * - 使用ContentResolver：通过NotesProvider访问数据库
+ * - 使用JSONObject：与同步模块交换数据
  */
 public class SqlData {
-    /**
-     * TAG
-     * 从名字理解：类名简称 SqlData
-     * 用于日志输出
-     */
     private static final String TAG = SqlData.class.getSimpleName();
-
-    /**
-     * INVALID_ID
-     * 从名字理解：无效 ID
-     * 作用：标记未初始化/不存在的数据 ID
-     */
     private static final int INVALID_ID = -99999;
 
-    /**
-     * PROJECTION_DATA
-     * 从名字理解：查询 data 表的投影列
-     * 来自 DataColumns 字段定义
-     * 作用：查询时只需要这些列
-     */
+    // 查询投影列
     public static final String[] PROJECTION_DATA = new String[] {
             DataColumns.ID, DataColumns.MIME_TYPE, DataColumns.CONTENT, DataColumns.DATA1,
             DataColumns.DATA3
     };
 
-    /**
-     * 以下为查询结果的列索引
-     * 与 PROJECTION_DATA 顺序一一对应
-     */
+    // 列索引
     public static final int DATA_ID_COLUMN = 0;
     public static final int DATA_MIME_TYPE_COLUMN = 1;
     public static final int DATA_CONTENT_COLUMN = 2;
     public static final int DATA_CONTENT_DATA_1_COLUMN = 3;
     public static final int DATA_CONTENT_DATA_3_COLUMN = 4;
 
-    /**
-     * mContentResolver
-     * 从名字理解：内容解析器
-     * 系统类：ContentResolver
-     * 作用：访问 ContentProvider 进行增删改查
-     */
     private ContentResolver mContentResolver;
-
-    /**
-     * mIsCreate
-     * 从名字理解：是否为新建数据
-     * true = 未插入数据库
-     * false = 已存在数据库
-     */
-    private boolean mIsCreate;
-
-    /**
-     * mDataId
-     * 从名字理解：data 表主键 ID
-     */
-    private long mDataId;
-
-    /**
-     * mDataMimeType
-     * 从名字理解：数据类型
-     * 例：text_note / call_note
-     */
-    private String mDataMimeType;
-
-    /**
-     * mDataContent
-     * 从名字理解：笔记文本内容
-     */
-    private String mDataContent;
-
-    /**
-     * mDataContentData1
-     * 从名字理解：扩展数字字段1
-     * 例：清单模式、通话时间
-     */
-    private long mDataContentData1;
-
-    /**
-     * mDataContentData3
-     * 从名字理解：扩展文本字段3
-     * 例：电话号码
-     */
-    private String mDataContentData3;
-
-    /**
-     * mDiffDataValues
-     * 从名字理解：需要更新的数据
-     * 作用：只保存变化的字段，提高效率
-     */
-    private ContentValues mDiffDataValues;
+    private boolean mIsCreate;          // 是否新建（未插入数据库）
+    private long mDataId;               // data表主键ID
+    private String mDataMimeType;       // 数据类型（text_note/call_note）
+    private String mDataContent;        // 笔记文本内容
+    private long mDataContentData1;     // 扩展字段1（清单模式/通话时间）
+    private String mDataContentData3;   // 扩展字段3（电话号码）
+    private ContentValues mDiffDataValues;  // 需要更新的字段
 
     /**
      * 构造方法：创建新数据
-     * 初始化所有字段为默认值
      */
     public SqlData(Context context) {
         mContentResolver = context.getContentResolver();
@@ -149,8 +86,7 @@ public class SqlData {
     }
 
     /**
-     * 构造方法：从 Cursor 加载已有数据
-     * 从数据库读取并赋值到成员变量
+     * 构造方法：从Cursor加载已有数据
      */
     public SqlData(Context context, Cursor c) {
         mContentResolver = context.getContentResolver();
@@ -160,9 +96,7 @@ public class SqlData {
     }
 
     /**
-     * 方法名：loadFromCursor
-     * 从名字理解：从游标加载数据
-     * 将查询结果赋值给成员变量
+     * 从游标加载数据
      */
     private void loadFromCursor(Cursor c) {
         mDataId = c.getLong(DATA_ID_COLUMN);
@@ -173,10 +107,8 @@ public class SqlData {
     }
 
     /**
-     * 方法名：setContent
-     * 从名字理解：从 JSON 设置数据
-     * 作用：将同步 JSON 数据解析到本地对象
-     * 只保存变化字段到 mDiffDataValues
+     * 从JSON设置数据
+     * 只保存变化的字段到mDiffDataValues
      */
     public void setContent(JSONObject js) throws JSONException {
         long dataId = js.has(DataColumns.ID) ? js.getLong(DataColumns.ID) : INVALID_ID;
@@ -212,9 +144,7 @@ public class SqlData {
     }
 
     /**
-     * 方法名：getContent
-     * 从名字理解：获取数据 JSON
-     * 作用：将本地对象转为同步 JSON
+     * 获取数据JSON
      */
     public JSONObject getContent() throws JSONException {
         if (mIsCreate) {
@@ -231,16 +161,14 @@ public class SqlData {
     }
 
     /**
-     * 方法名：commit
-     * 从名字理解：提交数据到数据库
-     * 新建 → insert
-     * 更新 → update
-     * 支持版本校验同步
+     * 提交数据到数据库
+     * @param noteId 关联的笔记ID
+     * @param validateVersion 是否校验版本
+     * @param version 版本号
      */
     public void commit(long noteId, boolean validateVersion, long version) {
-
         if (mIsCreate) {
-            // 新建数据
+            // 新建：插入数据库
             if (mDataId == INVALID_ID && mDiffDataValues.containsKey(DataColumns.ID)) {
                 mDiffDataValues.remove(DataColumns.ID);
             }
@@ -254,7 +182,7 @@ public class SqlData {
                 throw new ActionFailureException("create note failed");
             }
         } else {
-            // 更新数据
+            // 更新：更新数据库
             if (mDiffDataValues.size() > 0) {
                 int result = 0;
                 if (!validateVersion) {
@@ -274,15 +202,10 @@ public class SqlData {
             }
         }
 
-        // 提交后清空变更，标记为已存在
         mDiffDataValues.clear();
         mIsCreate = false;
     }
 
-    /**
-     * 方法名：getId
-     * 从名字理解：获取数据 ID
-     */
     public long getId() {
         return mDataId;
     }
