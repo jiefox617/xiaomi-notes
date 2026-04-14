@@ -27,7 +27,6 @@ import android.util.Log;
 import net.micode.notes.data.Notes;
 import net.micode.notes.data.Notes.DataColumns;
 import net.micode.notes.data.Notes.NoteColumns;
-import net.micode.notes.gtask.exception.ActionFailureException;
 import net.micode.notes.tool.GTaskStringUtils;
 import net.micode.notes.tool.ResourceParser;
 
@@ -97,6 +96,7 @@ public class SqlNote {
     private int mWidgetType;             // 小部件类型
     private long mOriginParent;          // 原始父文件夹
     private long mVersion;               // 版本号
+    private String mGtaskId;             // 【修复】Google Task ID
     private ContentValues mDiffNoteValues;  // 变更的字段
     private ArrayList<SqlData> mDataList;   // 内容数据列表
 
@@ -119,6 +119,7 @@ public class SqlNote {
         mWidgetType = Notes.TYPE_WIDGET_INVALIDE;
         mOriginParent = 0;
         mVersion = 0;
+        mGtaskId = null;
         mDiffNoteValues = new ContentValues();
         mDataList = new ArrayList<SqlData>();
     }
@@ -174,6 +175,7 @@ public class SqlNote {
         mWidgetId = c.getInt(WIDGET_ID_COLUMN);
         mWidgetType = c.getInt(WIDGET_TYPE_COLUMN);
         mVersion = c.getLong(VERSION_COLUMN);
+        mGtaskId = c.getString(GTASK_ID_COLUMN); // 【修复】读取GTASK_ID
     }
 
     private void loadDataContent() {
@@ -367,6 +369,7 @@ public class SqlNote {
     }
 
     public void setGtaskId(String gid) {
+        mGtaskId = gid;
         mDiffNoteValues.put(NoteColumns.GTASK_ID, gid);
     }
 
@@ -390,6 +393,11 @@ public class SqlNote {
 
     public String getSnippet() {
         return mSnippet;
+    }
+
+    // 【修复】添加getGtaskId方法
+    public String getGtaskId() {
+        return mGtaskId;
     }
 
     public boolean isNoteType() {

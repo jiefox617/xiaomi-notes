@@ -24,69 +24,54 @@ import android.os.Bundle;
 import android.os.IBinder;
 
 /**
- * Google Tasks 同步后台服务
- * 作用：
- * 1. 在**后台独立进程**中执行同步，不阻塞 UI
- * 2. 接收外部指令：开始同步 / 取消同步
- * 3. 通过广播向 UI 同步状态、进度
- * 4. 同步完成后自动停止服务，节约资源
- * 属于同步模块的**入口调度服务**
+ * Google Tasks同步后台服务
+ *
+ * 【类功能】
+ * 1. 在后台独立进程中执行同步，不阻塞UI
+ * 2. 接收外部指令：开始同步/取消同步
+ * 3. 通过广播向UI同步状态和进度
+ * 4. 同步完成后自动停止服务
+ *
+ * 【类间关系】
+ * - 被NotesListActivity/NotesPreferenceActivity调用：启动同步
+ * - 调用GTaskASyncTask：执行异步同步任务
+ * - 发送广播：通知UI更新同步状态
  */
 public class GTaskSyncService extends Service {
-    // 意图 Action 名称：用于区分服务要执行的操作类型
+
+    // Intent操作类型常量
     public final static String ACTION_STRING_NAME = "sync_action_type";
+    public final static int ACTION_START_SYNC = 0;   // 开始同步
+    public final static int ACTION_CANCEL_SYNC = 1;  // 取消同步
+    public final static int ACTION_INVALID = 2;      // 无效操作
 
-    // 操作类型：开始同步
-    public final static int ACTION_START_SYNC = 0;
-
-    // 操作类型：取消同步
-    public final static int ACTION_CANCEL_SYNC = 1;
-
-    // 操作类型：无效操作
-    public final static int ACTION_INVALID = 2;
-
-    // 广播 Action 名称：同步服务向外发送状态广播
+    // 广播相关常量
     public final static String GTASK_SERVICE_BROADCAST_NAME = "net.micode.notes.gtask.remote.gtask_sync_service";
-
-    // 广播 Extra 字段：当前是否正在同步
     public final static String GTASK_SERVICE_BROADCAST_IS_SYNCING = "isSyncing";
-
-    // 广播 Extra 字段：同步进度提示文字（如：正在初始化列表、正在同步）
     public final static String GTASK_SERVICE_BROADCAST_PROGRESS_MSG = "progressMsg";
 
-    // 异步同步任务（全局静态，保证同一时间只有一个同步任务）
-    private static GTaskASyncTask mSyncTask = null;
-
-    // 同步进度提示文本
-    private static String mSyncProgress = "";
+    private static GTaskASyncTask mSyncTask = null;  // 异步同步任务
+    private static String mSyncProgress = "";         // 同步进度文本
 
     /**
      * 开始同步
-     * 创建异步任务，执行同步逻辑
-     * 任务结束后自动清理并停止服务
      */
     private void startSync() {
         if (mSyncTask == null) {
             mSyncTask = new GTaskASyncTask(this, new GTaskASyncTask.OnCompleteListener() {
                 public void onComplete() {
-                    // 同步完成，清空任务对象
                     mSyncTask = null;
-                    // 发送结束广播
                     sendBroadcast("");
-                    // 停止服务自身
                     stopSelf();
                 }
             });
-            // 发送开始同步广播
             sendBroadcast("");
-            // 启动异步任务
             mSyncTask.execute();
         }
     }
 
     /**
      * 取消同步
-     * 通知异步任务中断执行
      */
     private void cancelSync() {
         if (mSyncTask != null) {
@@ -94,18 +79,11 @@ public class GTaskSyncService extends Service {
         }
     }
 
-    /**
-     * 服务创建时初始化
-     */
     @Override
     public void onCreate() {
         mSyncTask = null;
     }
 
-    /**
-     * 服务启动时调用
-     * 根据 Intent 携带的指令执行：开始 / 取消同步
-     */
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         Bundle bundle = intent.getExtras();
@@ -120,15 +98,11 @@ public class GTaskSyncService extends Service {
                 default:
                     break;
             }
-            // 服务被杀死后自动重启
-            return START_STICKY;
+            return START_STICKY;  // 服务被杀后自动重启
         }
         return super.onStartCommand(intent, flags, startId);
     }
 
-    /**
-     * 系统内存不足时取消同步，释放资源
-     */
     @Override
     public void onLowMemory() {
         if (mSyncTask != null) {
@@ -136,16 +110,13 @@ public class GTaskSyncService extends Service {
         }
     }
 
-    /**
-     * 绑定服务（本服务不需要绑定，返回 null）
-     */
+    @Override
     public IBinder onBind(Intent intent) {
         return null;
     }
 
     /**
      * 发送同步状态广播
-     * 通知界面：是否同步中、同步提示文字
      */
     public void sendBroadcast(String msg) {
         mSyncProgress = msg;
@@ -156,8 +127,7 @@ public class GTaskSyncService extends Service {
     }
 
     /**
-     * 外部静态调用方法：开始同步
-     * 界面可直接调用，无需关心服务细节
+     * 开始同步（静态方法，外部调用入口）
      */
     public static void startSync(Activity activity) {
         GTaskManager.getInstance().setActivityContext(activity);
@@ -167,7 +137,7 @@ public class GTaskSyncService extends Service {
     }
 
     /**
-     * 外部静态调用方法：取消同步
+     * 取消同步（静态方法，外部调用入口）
      */
     public static void cancelSync(Context context) {
         Intent intent = new Intent(context, GTaskSyncService.class);
@@ -176,14 +146,14 @@ public class GTaskSyncService extends Service {
     }
 
     /**
-     * 获取当前是否正在同步
+     * 获取同步状态
      */
     public static boolean isSyncing() {
         return mSyncTask != null;
     }
 
     /**
-     * 获取同步进度提示文本
+     * 获取同步进度文本
      */
     public static String getProgressString() {
         return mSyncProgress;
