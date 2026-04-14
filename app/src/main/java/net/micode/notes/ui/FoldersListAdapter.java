@@ -30,24 +30,28 @@ import net.micode.notes.data.Notes.NoteColumns;
 
 /**
  * 文件夹列表适配器
- * 功能：负责将数据库中的文件夹数据绑定到列表视图（ListView）
- * 用途：用于移动笔记时选择目标文件夹
+ * 功能：将数据库中的文件夹数据绑定到ListView，用于移动笔记时选择目标文件夹
+ *
+ * 类间关系：
+ * - 被MoveNoteActivity调用：显示文件夹列表供用户选择
+ * - 使用Notes.CONTENT_NOTE_URI：查询文件夹数据
+ * - 继承CursorAdapter：自动管理数据库游标
  */
 public class FoldersListAdapter extends CursorAdapter {
-    // 查询文件夹所需的字段：ID、名称
+    // 查询文件夹所需的字段
     public static final String [] PROJECTION = {
-            NoteColumns.ID,
-            NoteColumns.SNIPPET
+            NoteColumns.ID,           // 文件夹ID
+            NoteColumns.SNIPPET       // 文件夹名称
     };
 
-    // 列索引定义
+    // 列索引
     public static final int ID_COLUMN   = 0;
     public static final int NAME_COLUMN = 1;
 
     /**
      * 构造方法
      * @param context 上下文
-     * @param c 文件夹数据游标
+     * @param c 文件夹数据游标（查询结果）
      */
     public FoldersListAdapter(Context context, Cursor c) {
         super(context, c);
@@ -55,6 +59,7 @@ public class FoldersListAdapter extends CursorAdapter {
 
     /**
      * 创建新的列表项视图
+     * 返回自定义的FolderListItem视图
      */
     @Override
     public View newView(Context context, Cursor cursor, ViewGroup parent) {
@@ -63,14 +68,14 @@ public class FoldersListAdapter extends CursorAdapter {
 
     /**
      * 绑定数据到视图
-     * 特殊处理：根文件夹显示为“返回上级目录”
+     * 特殊处理：根文件夹显示为"返回上级目录"
      */
     @Override
     public void bindView(View view, Context context, Cursor cursor) {
         if (view instanceof FolderListItem) {
-            // 判断是否为根文件夹，若是则显示“上级目录”
+            // 判断是否为根文件夹（ID为-1）
             String folderName = (cursor.getLong(ID_COLUMN) == Notes.ID_ROOT_FOLDER)
-                    ? context.getString(R.string.menu_move_parent_folder)
+                    ? context.getString(R.string.menu_move_parent_folder)  // "上级目录"
                     : cursor.getString(NAME_COLUMN);
             ((FolderListItem) view).bind(folderName);
         }
@@ -78,7 +83,7 @@ public class FoldersListAdapter extends CursorAdapter {
 
     /**
      * 根据位置获取文件夹名称
-     * 供外部调用获取选中项名称
+     * 供外部调用获取用户选择的文件夹名
      */
     public String getFolderName(Context context, int position) {
         Cursor cursor = (Cursor) getItem(position);
@@ -88,21 +93,20 @@ public class FoldersListAdapter extends CursorAdapter {
     }
 
     /**
-     * 自定义文件夹列表项
-     * 包含一个文本视图，用于显示文件夹名称
+     * 自定义文件夹列表项视图
+     * 包含一个TextView显示文件夹名称
      */
     private class FolderListItem extends LinearLayout {
-        private TextView mName; // 文件夹名称文本
+        private TextView mName;
 
         public FolderListItem(Context context) {
             super(context);
-            // 加载列表项布局
             inflate(context, R.layout.folder_list_item, this);
             mName = (TextView) findViewById(R.id.tv_folder_name);
         }
 
         /**
-         * 绑定数据，设置文件夹名称
+         * 绑定文件夹名称
          */
         public void bind(String name) {
             mName.setText(name);

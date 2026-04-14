@@ -29,30 +29,32 @@ import net.micode.notes.R;
 
 /**
  * 下拉菜单封装类
- * 功能：将 Button 封装成带弹出菜单的下拉控件，简化菜单创建逻辑
- * 用途：笔记列表、编辑页中用于展示更多操作选项
+ * 功能：将Button封装成带弹出菜单的下拉控件，简化菜单创建逻辑
+ *
+ * 类间关系：
+ * - 被NoteEditActivity使用：提供编辑界面的更多操作菜单
+ * - 使用PopupMenu：Android原生弹出菜单
+ * - 使用Button：作为菜单触发器
  */
 public class DropdownMenu {
     private Button mButton;           // 触发菜单的按钮
-    private PopupMenu mPopupMenu;    // 系统弹出菜单
+    private PopupMenu mPopupMenu;     // 弹出菜单
     private Menu mMenu;               // 菜单对象
 
     /**
-     * 构造方法
+     * 构造方法：初始化按钮和弹出菜单
      * @param context 上下文
      * @param button 绑定的按钮
      * @param menuId 菜单布局资源ID
      */
     public DropdownMenu(Context context, Button button, int menuId) {
         mButton = button;
-        // 设置按钮背景为下拉箭头样式
-        mButton.setBackgroundResource(R.drawable.dropdown_icon);
-        // 创建弹出菜单并绑定到按钮
+        mButton.setBackgroundResource(R.drawable.dropdown_icon);  // 设置下拉箭头样式
+
         mPopupMenu = new PopupMenu(context, mButton);
-        // 获取菜单对象
         mMenu = mPopupMenu.getMenu();
-        // 加载菜单布局
         mPopupMenu.getMenuInflater().inflate(menuId, mMenu);
+
         // 按钮点击时显示菜单
         mButton.setOnClickListener(new OnClickListener() {
             public void onClick(View v) {
@@ -63,6 +65,7 @@ public class DropdownMenu {
 
     /**
      * 设置菜单项点击监听器
+     * 调用方（如NoteEditActivity）通过此方法处理菜单点击事件
      */
     public void setOnDropdownMenuItemClickListener(OnMenuItemClickListener listener) {
         if (mPopupMenu != null) {
@@ -72,6 +75,7 @@ public class DropdownMenu {
 
     /**
      * 根据ID查找菜单项
+     * 用于动态修改菜单项属性（如设置可见性、更改文字等）
      */
     public MenuItem findItem(int id) {
         return mMenu.findItem(id);

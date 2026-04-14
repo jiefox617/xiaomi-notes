@@ -17,10 +17,10 @@
 package net.micode.notes.ui;
 
 import android.content.Context;
-import android.text.SpannableString;      // 可样式化的字符串，用于设置高亮
-import android.text.TextUtils;            // 文本工具类，用于判断字符串是否为空
-import android.text.style.ForegroundColorSpan;  // 前景色跨度，用于改变文字颜色
-import android.text.format.DateUtils;     // 日期工具类，用于格式化相对时间
+import android.text.SpannableString;
+import android.text.TextUtils;
+import android.text.style.ForegroundColorSpan;
+import android.text.format.DateUtils;
 import android.view.View;
 import android.widget.CheckBox;
 import android.widget.ImageView;
@@ -32,45 +32,51 @@ import net.micode.notes.data.Notes;
 import net.micode.notes.tool.DataUtils;
 import net.micode.notes.tool.ResourceParser.NoteItemBgResources;
 
-import java.util.regex.Matcher;   // 正则匹配器
-import java.util.regex.Pattern;   // 正则模式
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
- * 笔记列表项的自定义布局
+ * 笔记列表项自定义布局
  *
- * 功能说明：
- * 1. 显示笔记或文件夹的列表项
- * 2. 支持不同类型的显示：普通笔记、通话记录笔记、文件夹
- * 3. 支持多选模式（带复选框）
+ * 【类功能】
+ * 1. 显示笔记或文件夹的单个列表项
+ * 2. 支持四种显示类型：普通笔记、通话记录笔记、普通文件夹、通话记录文件夹
+ * 3. 支持多选模式（显示复选框）
  * 4. 支持搜索关键词高亮显示（红色）
- * 5. 根据笔记位置自动设置背景样式（第一项、最后一项、中间项等）
+ * 5. 根据列表位置自动设置圆角背景（顶部圆角、底部圆角、四角圆角、无圆角）
  *
- * 使用场景：
- * - NotesListActivity 中的笔记列表
- * - 文件夹内容列表
- * - 搜索结果列表
+ * 【类间关系】
+ * - 被 NotesListAdapter 创建并调用 bind() 方法绑定数据
+ * - 使用 NoteItemData 获取笔记的所有数据字段
+ * - 使用 DataUtils.getFormattedSnippet() 格式化摘要文本
+ * - 使用 NoteItemBgResources 获取不同位置对应的背景资源ID
+ * - 与 NoteEditActivity 共享 TAG_CHECKED/TAG_UNCHECKED 常量用于过滤清单标记
+ *
+ * 【布局文件】
+ * - R.layout.note_item：包含闹钟图标、标题、时间、联系人、复选框
  */
 public class NotesListItem extends LinearLayout {
 
     // ====================== UI组件 ======================
-    private final ImageView mAlert;      // 闹钟提醒图标（时钟图标）
-    private final TextView mTitle;       // 标题/摘要文本
-    private final TextView mTime;        // 最后修改时间
-    private final TextView mCallName;    // 通话记录中的联系人姓名
-    private NoteItemData mItemData;      // 列表项数据模型
+    private final ImageView mAlert;      // 闹钟提醒图标（时钟图标）/ 通话记录图标
+    private final TextView mTitle;       // 笔记标题/摘要文本/文件夹名称
+    private final TextView mTime;        // 最后修改时间（相对时间格式）
+    private final TextView mCallName;    // 通话记录笔记的联系人姓名
+    private NoteItemData mItemData;      // 当前列表项的数据模型
     private final CheckBox mCheckBox;    // 多选模式下的复选框
 
     // ====================== 搜索高亮 ======================
-    // 静态变量，存储当前搜索关键词
-    // 所有列表项共享同一个搜索关键词，用于高亮显示
+    // 静态变量：所有列表项共享同一个搜索关键词
+    // 当用户在搜索框输入关键词时，NotesListAdapter.setSearchKeyword() 会调用此方法
+    // 然后 notifyDataSetChanged() 刷新列表，所有匹配的关键词都会标红
     private static String sSearchKeyword = "";
 
     /**
      * 设置搜索关键词（静态方法）
-     * 供外部调用，设置当前搜索的关键词
+     * 供 NotesListAdapter 调用，设置当前搜索的关键词
      * 所有列表项都会使用这个关键词进行高亮匹配
      *
-     * @param keyword 搜索关键词
+     * @param keyword 搜索关键词，如："笔记"、"重要"等
      */
     public static void setSearchKeyword(String keyword) {
         sSearchKeyword = keyword;
@@ -78,98 +84,110 @@ public class NotesListItem extends LinearLayout {
 
     /**
      * 构造函数
-     * 加载布局文件并初始化UI组件
+     * 加载 note_item.xml 布局文件并初始化UI组件
      *
-     * @param context 上下文对象
+     * @param context 上下文对象（通常是 NotesListActivity）
      */
     public NotesListItem(Context context) {
         super(context);
-        // 加载 note_item.xml 布局文件
+        // 加载布局文件，将 note_item.xml 解析并添加到当前 LinearLayout 中
         inflate(context, R.layout.note_item, this);
 
         // 初始化UI组件
-        mAlert = (ImageView) findViewById(R.id.iv_alert_icon);      // 闹钟图标
-        mTitle = (TextView) findViewById(R.id.tv_title);            // 标题
-        mTime = (TextView) findViewById(R.id.tv_time);              // 时间
+        mAlert = (ImageView) findViewById(R.id.iv_alert_icon);      // 闹钟/通话图标
+        mTitle = (TextView) findViewById(R.id.tv_title);            // 标题/摘要
+        mTime = (TextView) findViewById(R.id.tv_time);              // 修改时间
         mCallName = (TextView) findViewById(R.id.tv_name);          // 通话联系人姓名
 
-        // 获取复选框（android.R.id.checkbox 是系统内置ID）
+        // android.R.id.checkbox 是系统内置的复选框ID
+        // 在 note_item.xml 中声明了 CheckBox 并使用此ID
         mCheckBox = (CheckBox) findViewById(android.R.id.checkbox);
     }
 
     /**
      * 绑定数据到列表项
-     * 根据笔记类型和状态设置UI显示
+     * 这是整个类的核心方法，根据笔记类型和状态设置UI显示
+     *
+     * 显示逻辑分支：
+     * 1. 通话记录文件夹（ID = ID_CALL_RECORD_FOLDER）→ 显示"通话记录 (数量)"
+     * 2. 通话记录笔记（parentId = ID_CALL_RECORD_FOLDER）→ 显示联系人+摘要+闹钟图标
+     * 3. 普通文件夹（TYPE_FOLDER）→ 显示"文件夹名 (数量)"
+     * 4. 普通笔记（TYPE_NOTE）→ 显示摘要+闹钟图标
      *
      * @param context    上下文
-     * @param data       笔记数据对象
-     * @param choiceMode 是否处于多选模式
-     * @param checked    当前项是否被选中（多选模式下）
+     * @param data       笔记数据对象（包含ID、类型、内容、时间、闹钟等所有字段）
+     * @param choiceMode 是否处于多选模式（true=显示复选框，false=隐藏复选框）
+     * @param checked    当前项是否被选中（仅多选模式下有效）
      */
     public void bind(Context context, NoteItemData data, boolean choiceMode, boolean checked) {
 
-        // ====================== 处理多选模式复选框 ======================
-        // 多选模式下且当前项是笔记类型时，显示复选框
+        // ====================== 1. 处理多选模式复选框 ======================
+        // 多选模式 && 当前项是笔记类型（文件夹不能被选中删除）→ 显示复选框
         if (choiceMode && data.getType() == Notes.TYPE_NOTE) {
             mCheckBox.setVisibility(View.VISIBLE);   // 显示复选框
-            mCheckBox.setChecked(checked);            // 设置选中状态
+            mCheckBox.setChecked(checked);            // 根据传入的checked状态设置勾选
         } else {
-            mCheckBox.setVisibility(View.GONE);       // 非多选模式隐藏复选框
+            mCheckBox.setVisibility(View.GONE);       // 非多选模式或文件夹：隐藏复选框
         }
 
-        // 保存数据对象
+        // 保存数据对象，供外部 getItemData() 获取
         mItemData = data;
 
-        // ====================== 根据笔记类型设置显示样式 ======================
+        // ====================== 2. 根据笔记类型设置显示内容 ======================
 
-        // 情况1：通话记录文件夹（特殊文件夹）
+        // ---------- 情况1：通话记录文件夹（特殊的系统文件夹）----------
+        // Notes.ID_CALL_RECORD_FOLDER 是常量，值为 -2，表示通话记录文件夹
         if (data.getId() == Notes.ID_CALL_RECORD_FOLDER) {
-            // 隐藏联系人姓名
+            // 通话记录文件夹不需要显示联系人姓名
             mCallName.setVisibility(View.GONE);
-            // 显示闹钟图标区域（这里实际显示的是通话记录图标）
+
+            // 显示闹钟图标区域（这里实际显示的是通话记录图标，复用同一个ImageView）
             mAlert.setVisibility(View.VISIBLE);
-            // 设置标题样式为主文本样式
+            mAlert.setImageResource(R.drawable.call_record);  // 通话记录图标
+
+            // 标题使用主文本样式（较大、较醒目）
             mTitle.setTextAppearance(context, R.style.TextAppearancePrimaryItem);
-            // 设置标题文字："通话记录 (数量)"
+
+            // 设置标题文字："通话记录 (X)"，其中X是通话记录的数量
+            // 例如：通话记录 (3)
             mTitle.setText(context.getString(R.string.call_record_folder_name)
                     + context.getString(R.string.format_folder_files_count, data.getNotesCount()));
-            // 设置图标为通话记录图标
-            mAlert.setImageResource(R.drawable.call_record);
         }
-        // 情况2：通话记录文件夹下的笔记（通话录音笔记）
+        // ---------- 情况2：通话记录文件夹下的笔记（通话录音笔记）----------
+        // 当笔记的父文件夹是通话记录文件夹时
         else if (data.getParentId() == Notes.ID_CALL_RECORD_FOLDER) {
-            // 显示联系人姓名
+            // 显示联系人姓名（如"张三"）
             mCallName.setVisibility(View.VISIBLE);
-            mCallName.setText(data.getCallName());
-            // 标题使用次要文本样式
+            mCallName.setText(data.getCallName());  // 通过电话号码查询到的联系人姓名
+
+            // 标题使用次要文本样式（稍小、颜色稍淡）
             mTitle.setTextAppearance(context, R.style.TextAppearanceSecondaryItem);
 
-            // 获取格式化的摘要内容（去除多余空白、换行等）
+            // 获取格式化的摘要内容：去除多余空白、换行符、清单标记（✓/□）等
             String snippet = DataUtils.getFormattedSnippet(data.getSnippet());
-            // 高亮显示搜索关键词
+            // 高亮显示搜索关键词（将匹配的词标红）
             mTitle.setText(highlightText(snippet));
 
             // 如果有提醒闹钟，显示时钟图标
             if (data.hasAlert()) {
-                mAlert.setImageResource(R.drawable.clock);
+                mAlert.setImageResource(R.drawable.clock);  // 闹钟图标
                 mAlert.setVisibility(View.VISIBLE);
             } else {
                 mAlert.setVisibility(View.GONE);
             }
         }
-        // 情况3：普通笔记或文件夹
+        // ---------- 情况3：普通笔记或文件夹 ----------
         else {
-            // 隐藏联系人姓名
+            // 普通笔记/文件夹不需要显示联系人姓名
             mCallName.setVisibility(View.GONE);
-            // 标题使用主文本样式
             mTitle.setTextAppearance(context, R.style.TextAppearancePrimaryItem);
 
             // 子情况3.1：文件夹类型
             if (data.getType() == Notes.TYPE_FOLDER) {
-                // 显示文件夹名称和包含的笔记数量
+                // 显示文件夹名称和包含的笔记数量，例如："工作 (5)"
                 mTitle.setText(data.getSnippet()
                         + context.getString(R.string.format_folder_files_count, data.getNotesCount()));
-                // 文件夹不显示闹钟图标
+                // 文件夹不显示闹钟图标（文件夹不能设置提醒）
                 mAlert.setVisibility(View.GONE);
             }
             // 子情况3.2：普通笔记类型
@@ -189,32 +207,44 @@ public class NotesListItem extends LinearLayout {
             }
         }
 
-        // ====================== 设置修改时间 ======================
-        // DateUtils.getRelativeTimeSpanString() 将时间转换为相对时间格式
-        // 例如："刚刚"、"5分钟前"、"2小时前"、"昨天"等
+        // ====================== 3. 设置修改时间 ======================
+        // DateUtils.getRelativeTimeSpanString() 将时间戳转换为相对时间格式
+        // 示例输出：
+        //   - 刚刚（< 1分钟）
+        //   - 5分钟前（< 1小时）
+        //   - 2小时前（< 24小时）
+        //   - 昨天（< 48小时）
+        //   - 具体日期（≥ 48小时）
         mTime.setText(DateUtils.getRelativeTimeSpanString(data.getModifiedDate()));
 
-        // ====================== 设置背景样式 ======================
+        // ====================== 4. 设置背景样式 ======================
         // 根据笔记在列表中的位置和类型设置不同的背景
-        // 使列表项有圆角效果（顶部圆角、底部圆角、中间直角等）
+        // 使列表项有圆角效果：顶部圆角、底部圆角、四周圆角、直角
         setBackground(data);
     }
 
     /**
      * 高亮关键词（标红）
      *
-     * 功能：在文本中搜索关键词，将所有匹配的关键词标记为红色
+     * 【功能】
+     * 在文本中搜索用户输入的关键词，将所有匹配的关键词标记为红色
      *
-     * 实现原理：
+     * 【实现原理】
      * 1. 使用正则表达式匹配关键词（不区分大小写）
-     * 2. 使用 SpannableString 设置 ForegroundColorSpan 改变文字颜色
-     * 3. 循环匹配直到文本末尾
+     * 2. 使用 SpannableString 可以给字符串的不同部分设置不同样式
+     * 3. ForegroundColorSpan 改变文字前景色（这里用红色）
+     * 4. 循环匹配直到文本末尾
+     *
+     * 【示例】
+     * 内容："这是一个笔记示例"
+     * 关键词："笔记"
+     * 结果："这是一个【笔记】示例"（"笔记"两个字显示为红色）
      *
      * @param content 原始文本内容
      * @return 处理后的 CharSequence（如果有关键词则带红色高亮，否则返回原文本）
      */
     private CharSequence highlightText(String content) {
-        // 如果内容为空或搜索关键词为空，直接返回原内容
+        // 如果内容为空或搜索关键词为空，不需要高亮，直接返回原内容
         if (TextUtils.isEmpty(content) || TextUtils.isEmpty(sSearchKeyword)) {
             return content;
         }
@@ -222,17 +252,19 @@ public class NotesListItem extends LinearLayout {
         // 创建可样式化的字符串
         SpannableString sp = new SpannableString(content);
 
-        // 编译正则表达式：不区分大小写
+        // 编译正则表达式：不区分大小写（Pattern.CASE_INSENSITIVE）
+        // 这样无论用户输入大写还是小写都能匹配
         Pattern pattern = Pattern.compile(sSearchKeyword, Pattern.CASE_INSENSITIVE);
         Matcher matcher = pattern.matcher(sp);
 
         // 遍历所有匹配项，设置红色高亮
         while (matcher.find()) {
-            // 0xFFFF0000 是红色（ARGB格式：Alpha=FF, Red=FF, Green=00, Blue=00）
+            // 0xFFFF0000 是红色（ARGB格式：Alpha=FF不透明, Red=FF, Green=00, Blue=00）
+            // SPAN_EXCLUSIVE_EXCLUSIVE 表示高亮不扩展到相邻文本
             sp.setSpan(new ForegroundColorSpan(0xFFFF0000),
-                    matcher.start(),      // 匹配开始位置
-                    matcher.end(),        // 匹配结束位置
-                    SpannableString.SPAN_EXCLUSIVE_EXCLUSIVE);  // 不包含边界
+                    matcher.start(),      // 匹配开始位置（字符索引）
+                    matcher.end(),        // 匹配结束位置（字符索引）
+                    SpannableString.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
         return sp;
     }
@@ -240,16 +272,23 @@ public class NotesListItem extends LinearLayout {
     /**
      * 设置列表项背景
      *
-     * 根据笔记类型和在列表中的位置设置不同的背景资源：
+     * 【功能】
+     * 根据笔记类型和在列表中的位置设置不同的背景资源
      *
-     * 对于笔记类型（TYPE_NOTE）：
-     * - 单独的笔记（列表中只有一个）→ 四周圆角
-     * - 第一项 → 顶部圆角
-     * - 最后一项 → 底部圆角
-     * - 中间项 → 无圆角
+     * 【背景选择规则 - 笔记类型】
+     * - 单独的笔记（列表中只有这一个）→ 四周圆角背景
+     * - 第一项 → 顶部圆角背景
+     * - 最后一项 → 底部圆角背景
+     * - 中间项 → 直角背景（无圆角）
+     * - 后面紧跟文件夹的笔记 → 四周圆角背景
+     * - 后面有多个文件夹的笔记 → 顶部圆角背景
      *
-     * 对于文件夹类型（TYPE_FOLDER）：
-     * - 使用固定的文件夹背景
+     * 【背景选择规则 - 文件夹类型】
+     * - 使用固定的文件夹背景（灰色，无圆角效果）
+     *
+     * 【为什么要这样做？】
+     * 在Android的ListView中，列表项通常紧密排列。通过给第一项加顶部圆角、最后一项加底部圆角，
+     * 可以让整个列表看起来像一个有圆角的卡片，视觉效果更好。
      *
      * @param data 笔记数据对象
      */
@@ -258,27 +297,41 @@ public class NotesListItem extends LinearLayout {
 
         if (data.getType() == Notes.TYPE_NOTE) {
             // 笔记类型：根据位置选择不同的背景资源
+
+            // isSingle(): 列表中只有这一项
+            // isOneFollowingFolder(): 这一项后面紧跟着一个文件夹（没有其他笔记）
+            // → 使用四角圆角背景
             if (data.isSingle() || data.isOneFollowingFolder()) {
-                // 单独一项 或 后面紧跟着文件夹 → 使用四角圆角背景
                 setBackgroundResource(NoteItemBgResources.getNoteBgSingleRes(id));
-            } else if (data.isLast()) {
-                // 最后一项 → 使用底部圆角背景
+            }
+            // isLast(): 是列表中的最后一项
+            // → 使用底部圆角背景
+            else if (data.isLast()) {
                 setBackgroundResource(NoteItemBgResources.getNoteBgLastRes(id));
-            } else if (data.isFirst() || data.isMultiFollowingFolder()) {
-                // 第一项 或 后面跟着多个文件夹 → 使用顶部圆角背景
+            }
+            // isFirst(): 是列表中的第一项
+            // isMultiFollowingFolder(): 后面有多个文件夹
+            // → 使用顶部圆角背景
+            else if (data.isFirst() || data.isMultiFollowingFolder()) {
                 setBackgroundResource(NoteItemBgResources.getNoteBgFirstRes(id));
-            } else {
-                // 中间项 → 使用直角背景（无圆角）
+            }
+            // 中间项 → 使用直角背景（无圆角）
+            else {
                 setBackgroundResource(NoteItemBgResources.getNoteBgNormalRes(id));
             }
         } else {
             // 文件夹类型：使用固定的文件夹背景
+            // 文件夹通常有自己的特殊样式，不参与圆角效果
             setBackgroundResource(NoteItemBgResources.getFolderBgRes());
         }
     }
 
     /**
      * 获取当前列表项的数据对象
+     * 供外部调用获取当前项的完整信息
+     *
+     * 使用场景：在 NotesListActivity 中点击列表项时，
+     * 通过此方法获取点击项的 NoteItemData，进而获得笔记ID、类型等信息
      *
      * @return NoteItemData 对象，包含当前项的完整信息
      */
