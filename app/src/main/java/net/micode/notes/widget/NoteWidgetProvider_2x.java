@@ -9,7 +9,7 @@
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied.
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
@@ -24,40 +24,33 @@ import net.micode.notes.data.Notes;
 import net.micode.notes.tool.ResourceParser;
 
 /**
- * 2x 尺寸笔记桌面小部件
- * 继承自抽象基类 NoteWidgetProvider
- * 仅实现具体布局、背景、类型，业务逻辑全部由父类完成
+ * 2x尺寸笔记桌面小部件
+ *
+ * 【类功能】
+ * 2x2大小的桌面小部件，继承基类，实现具体布局、背景、类型
+ *
+ * 【类间关系】
+ * - 继承NoteWidgetProvider：复用通用逻辑
+ * - 被系统调用：作为AppWidgetProvider注册
+ * - 使用ResourceParser：获取2x小部件背景资源
  */
 public class NoteWidgetProvider_2x extends NoteWidgetProvider {
 
-    /**
-     * 系统刷新小部件时调用
-     * 直接调用父类的更新逻辑
-     */
     @Override
     public void onUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds) {
         super.update(context, appWidgetManager, appWidgetIds);
     }
 
-    /**
-     * 返回 2x 小部件对应的布局文件
-     */
     @Override
     protected int getLayoutId() {
         return R.layout.widget_2x;
     }
 
-    /**
-     * 返回 2x 小部件对应的背景资源
-     */
     @Override
     protected int getBgResourceId(int bgId) {
         return ResourceParser.WidgetBgResources.getWidget2xBgResource(bgId);
     }
 
-    /**
-     * 返回小部件类型：2x 型号
-     */
     @Override
     protected int getWidgetType() {
         return Notes.TYPE_WIDGET_2X;

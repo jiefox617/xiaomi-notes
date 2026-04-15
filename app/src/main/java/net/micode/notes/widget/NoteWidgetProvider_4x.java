@@ -9,7 +9,7 @@
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied.
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
@@ -24,41 +24,33 @@ import net.micode.notes.data.Notes;
 import net.micode.notes.tool.ResourceParser;
 
 /**
- * 4x 大尺寸笔记桌面小部件实现类
- * 继承自抽象基类 NoteWidgetProvider
- * 仅实现自身特有的布局、背景资源、类型标识
- * 所有核心逻辑由父类统一处理
+ * 4x尺寸笔记桌面小部件
+ *
+ * 【类功能】
+ * 4x4大小的桌面小部件，继承基类，实现具体布局、背景、类型
+ *
+ * 【类间关系】
+ * - 继承NoteWidgetProvider：复用通用逻辑
+ * - 被系统调用：作为AppWidgetProvider注册
+ * - 使用ResourceParser：获取4x小部件背景资源
  */
 public class NoteWidgetProvider_4x extends NoteWidgetProvider {
 
-    /**
-     * 系统触发小部件更新时调用
-     * 调用父类的 update 方法完成实际更新逻辑
-     */
     @Override
     public void onUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds) {
         super.update(context, appWidgetManager, appWidgetIds);
     }
 
-    /**
-     * 返回 4x 小部件对应的布局文件 ID
-     */
     @Override
     protected int getLayoutId() {
         return R.layout.widget_4x;
     }
 
-    /**
-     * 返回 4x 小部件对应的背景图片资源
-     */
     @Override
     protected int getBgResourceId(int bgId) {
         return ResourceParser.WidgetBgResources.getWidget4xBgResource(bgId);
     }
 
-    /**
-     * 返回当前小部件的类型：4x 型号
-     */
     @Override
     protected int getWidgetType() {
         return Notes.TYPE_WIDGET_4X;
