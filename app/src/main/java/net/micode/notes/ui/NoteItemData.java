@@ -36,6 +36,7 @@ import net.micode.notes.tool.DataUtils;
  * - 调用Contact：获取联系人姓名
  * - 调用DataUtils：获取来电号码
  * - 使用NoteEditActivity常量：过滤清单模式标记
+ * -
  */
 public class NoteItemData {
 
